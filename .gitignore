@@ -1,0 +1,30 @@
+# Vyper
+*.egg-info/
+artifacts/
+coverage/
+.venv/
+__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/
+pyxis_credit_protocol.egg-info
+
+# Dependencias y herramientas auxiliares
+/node_modules/
+/.idea/
+package-lock.json
+build/
+dist/
+
+# Variables y datos locales
+.env
+.env.*
+!.env.example
+*.log
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Documentación interna
+vulnerability.md
