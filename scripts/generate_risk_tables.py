@@ -75,7 +75,7 @@ def main() -> None:
     lines.append("        return 5_000")
     lines.append("    return base + add_on")
     lines.append("")
-    OUT.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    OUT.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":

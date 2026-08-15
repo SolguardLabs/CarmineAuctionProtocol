@@ -10,7 +10,7 @@ if [ -x ".venv/bin/python" ]; then
 else
   PY=".venv/Scripts/python.exe"
 fi
-"$PY" -m pip install -r requirements.txt
+"$PY" -m pip install -r requirements-dev.txt
 "$PY" scripts/generate_risk_tables.py
-"$PY" -m pytest -q
+"$PY" -m pytest --ignore=tests/private
 

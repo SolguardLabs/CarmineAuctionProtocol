@@ -1,17 +1,47 @@
 name: CI
 
 on:
-  push:
-  pull_request:
+    push:
+        branches:
+            - main
+            - production
+            - "agent/**"
+        tags:
+            - "v*"
+    pull_request:
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+concurrency:
+    group: ci-${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
 
 jobs:
-  python-vyper:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-          cache: pip
-      - run: python -m pip install --upgrade pip
-      - run: bash scripts/ci.sh
+    quality:
+        name: Quality / ${{ matrix.os }}
+        strategy:
+            fail-fast: false
+            matrix:
+                os:
+                    - ubuntu-latest
+                    - windows-latest
+        runs-on: ${{ matrix.os }}
+        timeout-minutes: 20
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v7
+
+            - name: Setup Python
+              uses: actions/setup-python@v7
+              with:
+                  python-version: "3.12"
+                  cache: pip
+                  cache-dependency-path: requirements-dev.txt
+
+            - name: Install dependencies
+              run: python -m pip install -r requirements-dev.txt
+
+            - name: Run quality gate
+              run: python scripts/ci.py
