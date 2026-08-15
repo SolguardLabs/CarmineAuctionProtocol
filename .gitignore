@@ -26,5 +26,5 @@ dist/
 .DS_Store
 Thumbs.db
 
-# Documentación interna
-vulnerability.md
+# Evidencia privada local
+/tests/private/
