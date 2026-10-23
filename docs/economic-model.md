@@ -22,18 +22,24 @@ flowchart LR
     C["Collateral del cedente"] --> H["AuctionHouse"]
     D["Guarantee del bidder"] --> H
     W["Due del ganador"] --> H
+    P["Reservas parciales pagadas"] --> H
     H --> S["Debt al cedente"]
-    H --> P["Claims parciales"]
+    H --> Q["Claims parciales"]
     H --> G["Asignacion del ganador"]
 ```
 
 La igualdad de cierre por auction es:
 
 ```text
-debtIn = winningGuarantee + due
-sellerDebtOut = winningBidAmount
+debtIn = winningGuarantee + due + totalPartialPaid
+sellerDebtOut = winningBidAmount + totalPartialPaid
 debtIn = sellerDebtOut
 ```
+
+El pago de una reserva parcial se bloquea al registrar el derecho, no al
+reclamar colateral. Por ello se conserva aunque el titular sea sobrepujado.
+El ganador solo completa su puja, y el cedente recibe ambas fuentes en una
+unica conciliacion de la subasta.
 
 ## Target Y Precio De Descubrimiento
 
@@ -83,6 +89,30 @@ winner = 1.000 - 300 = 700 cCOL
 
 El residuo de redondeo se asigna al ganador para mantener conservacion exacta.
 
+Cada participante tiene unidades acumuladas. Al registrar una nueva reserva,
+se calcula la diferencia entre su asignacion redondeada anterior y la nueva;
+el AuctionHouse suma esas diferencias al colateral fisicamente reservado.
+Esto permite reconstruir la asignacion desde los saldos por participante.
+
+## Precio De Una Reserva Parcial
+
+La cotizacion usa la puja lider, las unidades acumuladas del participante,
+la garantia configurada y la duracion efectiva de la subasta. El pago exigido
+es el incremento de una curva con componente lineal y prima convexa. Para una
+subasta sin extensiones, una puja de 900 cUSD, garantia de 2.000 bps y una
+reserva de 3.000 bps producen:
+
+```text
+base = 900 * 3.000 / 10.000 = 270 cUSD
+prima = 900 * 3.000^2 * 12.000 / 10.000^3 = 97,2 cUSD
+pago = 367,2 cUSD
+```
+
+`quote_next_partial_claim` cotiza el siguiente incremento para un titular
+con unidades previas. La interfaz devuelve unidades atomicas del token de
+deuda; los integradores deben leer el estado inmediatamente antes de enviar
+la transaccion, ya que una nueva puja o extension cambia la cotizacion.
+
 ## Valor De Colateral
 
 ```text
@@ -118,6 +148,7 @@ auctionDebtTarget = min(discountedValue, debt)
 | extension count | contador | presion cerca del cierre |
 | claim pressure | partial / lot | reserva de distribucion |
 | settlement due | bid - guarantee | pago pendiente |
+| partial paid | suma de pagos de reserva | ingreso complementario del cedente |
 
 ## Conciliacion
 

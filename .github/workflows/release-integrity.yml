@@ -63,7 +63,7 @@ jobs:
                   production="$(git rev-parse origin/production)"
                   test "$tagged" = "$main"
                   test "$tagged" = "$production"
-                  test "$TAG" = "v1.0.0"
+                  test "$TAG" = "v2.0.0"
 
             - name: Re-run quality gate
               run: python scripts/ci.py

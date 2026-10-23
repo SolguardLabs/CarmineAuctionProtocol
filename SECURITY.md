@@ -4,8 +4,8 @@
 
 | Version | Estado | Canal |
 | --- | --- | --- |
-| 1.0.x | mantenida | `main`, `production` y tags `v1.0.x` |
-| anteriores | sin soporte | solo referencia historica |
+| 2.0.x | mantenida | `main`, `production` y tags `v2.0.x` |
+| 1.0.x | sin soporte | solo referencia historica |
 
 Las evaluaciones deben realizarse contra el tag anotado mas reciente. Un SHA de
 branch sin tag no constituye una version publicada.
@@ -38,6 +38,21 @@ investigacion.
 
 ## Invariantes Economicas
 
+```mermaid
+flowchart LR
+    B["Bidder"] -->|garantia| H["AuctionHouse"]
+    P["Titular parcial"] -->|precio de reserva| H
+    W["Ganador"] -->|saldo de puja| H
+    H -->|puja + reservas pagadas| S["Cedente"]
+    H -->|claim parcial pagado| P
+    H -->|resto del lote| W
+    H -.->|eventos y saldos| C["Conciliacion"]
+```
+
+El control operativo compara importes ERC-20 recibidos, asignaciones de
+colateral y estado de cierre por subasta. Una cotizacion parcial solo crea un
+derecho despues de cobrar el token de deuda correspondiente.
+
 Custodia:
 
 ```text
@@ -47,8 +62,9 @@ balanceFisico(collateral) >= lotesActivos + claimsPendientes
 Settlement:
 
 ```text
-sellerCredit == winningBidAmount
+sellerCredit == winningBidAmount + partialClaimPaid
 winnerDebtPaid == winningBidAmount
+partialClaimPaid == sum(pagosDeReserva)
 ```
 
 Distribucion:

@@ -10,7 +10,7 @@ from urllib.parse import urlencode, urljoin, urlparse
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
-VERSION = "1.0.0"
+VERSION = "2.0.0"
 BPS = 10_000
 MAX_DISCOUNT_BPS = 9_500
 

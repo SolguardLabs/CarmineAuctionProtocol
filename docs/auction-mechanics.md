@@ -89,6 +89,12 @@ La cantidad fisica se calcula solo con enteros:
 partialCollateral = floor(collateralAmount * unitsBps / 10_000)
 ```
 
+El registro requiere el pago inmediato de la cotizacion en el token de deuda.
+La garantia de la puja y el precio de la reserva se contabilizan por separado.
+Si el lider es sobrepujado, su garantia se reintegra; la reserva pagada sigue
+siendo reclamable tras el settlement. El callback de reembolso no modifica
+una reserva ni concede derechos nuevos.
+
 ## Cierre Y Settlement
 
 Al alcanzar `endTime`, el ganador completa:
@@ -97,7 +103,8 @@ Al alcanzar `endTime`, el ganador completa:
 due = winningBidAmount - winningGuarantee
 ```
 
-El AuctionHouse transfiere `winningBidAmount` al seller exactamente una vez y
+El AuctionHouse transfiere `winningBidAmount + totalPartialPaid` al seller
+exactamente una vez y
 marca la subasta como settled.
 
 ## Distribucion
@@ -105,7 +112,7 @@ marca la subasta como settled.
 El lote se divide en:
 
 ```text
-reserved = floor(collateralAmount * totalPartialUnits / 10_000)
+reserved = sum(partialCollateralReserved[bidder])
 winnerCollateral = collateralAmount - reserved
 ```
 

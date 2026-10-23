@@ -17,7 +17,7 @@ EXPECTED_DOCS = {
     "portfolio-risk.md",
     "sdk.md",
 }
-EXPECTED_VERSION = "1.0.0"
+EXPECTED_VERSION = "2.0.0"
 FORBIDDEN_PUBLIC_TERMS = re.compile(
     r"\b(?:ctf|vulnerabilit(?:y|ies)|vulnerable|exploit(?:s|ed|ing)?|bugs?|"
     r"laborator(?:y|ies)|laboratorios?|vulnerabilidades?)\b",
@@ -69,7 +69,7 @@ def verify_readme_and_security() -> None:
         raise AssertionError("canonical banner reference missing")
     if readme.count("```mermaid") < 4:
         raise AssertionError("README requires at least four Mermaid diagrams")
-    if "Production 1.0.0" not in readme or "Python 3.12" not in readme:
+    if "Production 2.0.0" not in readme or "Python 3.12" not in readme:
         raise AssertionError("README release contract incomplete")
     if "GitHub Security Advisory" not in security:
         raise AssertionError("private security reporting route missing")
@@ -118,7 +118,7 @@ def main() -> int:
     verify_banner()
     verify_public_language()
     verify_workflows()
-    print("Repository contract verified: 7 docs, version 1.0.0, canonical banner.")
+    print("Repository contract verified: 7 docs, version 2.0.0, canonical banner.")
     return 0
 
 

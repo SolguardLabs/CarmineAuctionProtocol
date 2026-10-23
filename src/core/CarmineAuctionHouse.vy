@@ -33,6 +33,9 @@ struct Auction:
     total_partial_claimed: uint256
     debt_settled: bool
     winner_claimed: bool
+    total_partial_paid: uint256
+    total_partial_collateral_reserved: uint256
+    initial_duration: uint256
 
 event AuctionCreated:
     auction_id: indexed(uint256)
@@ -62,6 +65,7 @@ event LeaderClaimSnapshotted:
     bidder: indexed(address)
     units_bps: uint256
     total_units_bps: uint256
+    debt_paid: uint256
 
 event AuctionSettled:
     auction_id: indexed(uint256)
@@ -93,6 +97,8 @@ next_auction_id: public(uint256)
 auctions: public(HashMap[uint256, Auction])
 partial_claim_units: public(HashMap[uint256, HashMap[address, uint256]])
 partial_claimed: public(HashMap[uint256, HashMap[address, bool]])
+partial_claim_paid: public(HashMap[uint256, HashMap[address, uint256]])
+partial_collateral_reserved: public(HashMap[uint256, HashMap[address, uint256]])
 bid_count: public(HashMap[uint256, uint256])
 bidder_high_water: public(HashMap[uint256, HashMap[address, uint256]])
 bidder_refunds: public(HashMap[uint256, HashMap[address, uint256]])
@@ -145,6 +151,21 @@ def _near_close(_auction_id: uint256) -> bool:
 @view
 def _partial_collateral_for_units(_auction_id: uint256, _units: uint256) -> uint256:
     return self.auctions[_auction_id].collateral_amount * _units // BPS
+
+@internal
+@view
+def _partial_claim_price(_auction_id: uint256, _current_units: uint256, _units: uint256) -> uint256:
+    bid: uint256 = self.auctions[_auction_id].winning_bid_amount
+    new_units: uint256 = _current_units + _units
+    base_before: uint256 = bid * _current_units // BPS
+    base_after: uint256 = bid * new_units // BPS
+    effective_duration: uint256 = self.auctions[_auction_id].end_time - self.auctions[_auction_id].start_time
+    weight: uint256 = BPS + self.auctions[_auction_id].guarantee_bps
+    duration: uint256 = self.auctions[_auction_id].initial_duration
+    denominator: uint256 = BPS * BPS * BPS * effective_duration
+    curve_before: uint256 = bid * _current_units * _current_units * weight * duration // denominator
+    curve_after: uint256 = bid * new_units * new_units * weight * duration // denominator
+    return base_after - base_before + curve_after - curve_before
 
 @external
 def set_paused(_paused: bool):
@@ -210,7 +231,10 @@ def create_auction(
         total_partial_units: 0,
         total_partial_claimed: 0,
         debt_settled: False,
-        winner_claimed: False
+        winner_claimed: False,
+        total_partial_paid: 0,
+        total_partial_collateral_reserved: 0,
+        initial_duration: _duration
     })
     log AuctionCreated(
         auction_id=auction_id,
@@ -224,6 +248,7 @@ def create_auction(
     return auction_id
 
 @external
+@nonreentrant
 def bid(_auction_id: uint256, _amount: uint256):
     assert not self.paused, "paused"
     assert self._is_active(_auction_id), "auction"
@@ -237,6 +262,13 @@ def bid(_auction_id: uint256, _amount: uint256):
     previous_bidder: address = self.auctions[_auction_id].winning_bidder
     previous_guarantee: uint256 = self.auctions[_auction_id].winning_guarantee
     was_extended: bool = False
+    self.auctions[_auction_id].winning_bidder = msg.sender
+    self.auctions[_auction_id].winning_bid_amount = _amount
+    self.auctions[_auction_id].winning_guarantee = guarantee
+    self.auctions[_auction_id].last_bid_time = block.timestamp
+    self.bid_count[_auction_id] += 1
+    if _amount > self.bidder_high_water[_auction_id][msg.sender]:
+        self.bidder_high_water[_auction_id][msg.sender] = _amount
     if previous_bidder != empty(address):
         refund_ok: bool = extcall IERC20(token).transfer(previous_bidder, previous_guarantee)
         assert refund_ok, "refund"
@@ -259,13 +291,6 @@ def bid(_auction_id: uint256, _amount: uint256):
             max_outsize=0,
             revert_on_failure=False
         )
-    self.auctions[_auction_id].winning_bidder = msg.sender
-    self.auctions[_auction_id].winning_bid_amount = _amount
-    self.auctions[_auction_id].winning_guarantee = guarantee
-    self.auctions[_auction_id].last_bid_time = block.timestamp
-    self.bid_count[_auction_id] += 1
-    if _amount > self.bidder_high_water[_auction_id][msg.sender]:
-        self.bidder_high_water[_auction_id][msg.sender] = _amount
     if self._near_close(_auction_id):
         self.auctions[_auction_id].end_time += self.auctions[_auction_id].extension_duration
         self.auctions[_auction_id].extension_count += 1
@@ -280,6 +305,7 @@ def bid(_auction_id: uint256, _amount: uint256):
     )
 
 @external
+@nonreentrant
 def snapshot_leader_claim(_auction_id: uint256, _units_bps: uint256):
     assert self._is_active(_auction_id), "auction"
     assert msg.sender == self.auctions[_auction_id].winning_bidder, "leader"
@@ -289,16 +315,29 @@ def snapshot_leader_claim(_auction_id: uint256, _units_bps: uint256):
     new_units: uint256 = current + _units_bps
     assert new_units <= self.auctions[_auction_id].partial_claim_bps, "bidder cap"
     assert self.auctions[_auction_id].total_partial_units + _units_bps <= BPS, "lot cap"
+    price: uint256 = self._partial_claim_price(_auction_id, current, _units_bps)
+    assert price > 0, "claim price"
+    existing_collateral: uint256 = self._partial_collateral_for_units(_auction_id, current)
+    new_collateral: uint256 = self._partial_collateral_for_units(_auction_id, new_units)
+    collateral_delta: uint256 = new_collateral - existing_collateral
     self.partial_claim_units[_auction_id][msg.sender] = new_units
+    self.partial_claim_paid[_auction_id][msg.sender] += price
+    self.partial_collateral_reserved[_auction_id][msg.sender] = new_collateral
     self.auctions[_auction_id].total_partial_units += _units_bps
+    self.auctions[_auction_id].total_partial_paid += price
+    self.auctions[_auction_id].total_partial_collateral_reserved += collateral_delta
+    paid: bool = extcall IERC20(self.auctions[_auction_id].debt_token).transferFrom(msg.sender, self, price)
+    assert paid, "claim payment"
     log LeaderClaimSnapshotted(
         auction_id=_auction_id,
         bidder=msg.sender,
         units_bps=_units_bps,
-        total_units_bps=self.auctions[_auction_id].total_partial_units
+        total_units_bps=self.auctions[_auction_id].total_partial_units,
+        debt_paid=price
     )
 
 @external
+@nonreentrant
 def settle(_auction_id: uint256):
     assert self._is_active(_auction_id), "auction"
     assert block.timestamp >= self.auctions[_auction_id].end_time, "not ended"
@@ -311,14 +350,15 @@ def settle(_auction_id: uint256):
     if due > 0:
         pull_ok: bool = extcall IERC20(token).transferFrom(msg.sender, self, due)
         assert pull_ok, "debt pull"
-    pay_ok: bool = extcall IERC20(token).transfer(self.auctions[_auction_id].seller, self.auctions[_auction_id].winning_bid_amount)
+    seller_proceeds: uint256 = self.auctions[_auction_id].winning_bid_amount + self.auctions[_auction_id].total_partial_paid
+    pay_ok: bool = extcall IERC20(token).transfer(self.auctions[_auction_id].seller, seller_proceeds)
     assert pay_ok, "debt pay"
     self.auctions[_auction_id].debt_settled = True
     self.auctions[_auction_id].status = STATUS_SETTLED
     log AuctionSettled(
         auction_id=_auction_id,
         winner=winner,
-        debt_paid=self.auctions[_auction_id].winning_bid_amount,
+        debt_paid=seller_proceeds,
         seller=self.auctions[_auction_id].seller
     )
 
@@ -327,7 +367,7 @@ def claim_winner_collateral(_auction_id: uint256):
     assert self.auctions[_auction_id].status == STATUS_SETTLED, "settled"
     assert msg.sender == self.auctions[_auction_id].winning_bidder, "winner"
     assert not self.auctions[_auction_id].winner_claimed, "claimed"
-    reserved: uint256 = self._partial_collateral_for_units(_auction_id, self.auctions[_auction_id].total_partial_units)
+    reserved: uint256 = self.auctions[_auction_id].total_partial_collateral_reserved
     amount: uint256 = self.auctions[_auction_id].collateral_amount - reserved
     self.auctions[_auction_id].winner_claimed = True
     ok: bool = extcall IERC20(self.auctions[_auction_id].collateral_token).transfer(msg.sender, amount)
@@ -340,7 +380,7 @@ def claim_partial_collateral(_auction_id: uint256):
     assert not self.partial_claimed[_auction_id][msg.sender], "claimed"
     units: uint256 = self.partial_claim_units[_auction_id][msg.sender]
     assert units > 0, "units"
-    amount: uint256 = self._partial_collateral_for_units(_auction_id, units)
+    amount: uint256 = self.partial_collateral_reserved[_auction_id][msg.sender]
     self.partial_claimed[_auction_id][msg.sender] = True
     self.auctions[_auction_id].total_partial_claimed += amount
     ok: bool = extcall IERC20(self.auctions[_auction_id].collateral_token).transfer(msg.sender, amount)
@@ -382,13 +422,31 @@ def is_near_close(_auction_id: uint256) -> bool:
 @external
 @view
 def preview_winner_collateral(_auction_id: uint256) -> uint256:
-    reserved: uint256 = self._partial_collateral_for_units(_auction_id, self.auctions[_auction_id].total_partial_units)
+    reserved: uint256 = self.auctions[_auction_id].total_partial_collateral_reserved
     return self.auctions[_auction_id].collateral_amount - reserved
 
 @external
 @view
 def preview_partial_collateral(_auction_id: uint256, _bidder: address) -> uint256:
-    return self._partial_collateral_for_units(_auction_id, self.partial_claim_units[_auction_id][_bidder])
+    return self.partial_collateral_reserved[_auction_id][_bidder]
+
+@external
+@view
+def quote_partial_claim(_auction_id: uint256, _units_bps: uint256) -> uint256:
+    assert _units_bps > 0 and _units_bps <= self.auctions[_auction_id].partial_claim_bps, "units"
+    return self._partial_claim_price(_auction_id, 0, _units_bps)
+
+@external
+@view
+def quote_next_partial_claim(_auction_id: uint256, _bidder: address, _units_bps: uint256) -> uint256:
+    current: uint256 = self.partial_claim_units[_auction_id][_bidder]
+    assert _units_bps > 0 and current + _units_bps <= self.auctions[_auction_id].partial_claim_bps, "units"
+    return self._partial_claim_price(_auction_id, current, _units_bps)
+
+@external
+@view
+def seller_proceeds(_auction_id: uint256) -> uint256:
+    return self.auctions[_auction_id].winning_bid_amount + self.auctions[_auction_id].total_partial_paid
 
 @external
 @view

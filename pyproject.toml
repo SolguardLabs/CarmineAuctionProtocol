@@ -1,6 +1,6 @@
 [project]
 name = "carmine-auction-protocol"
-version = "1.0.0"
+version = "2.0.0"
 description = "Infraestructura de subastas de liquidacion con contratos Vyper y SDK Python"
 requires-python = ">=3.12"
 license = { text = "MIT" }
