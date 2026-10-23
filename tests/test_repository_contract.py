@@ -28,9 +28,9 @@ def test_release_version_is_synchronized():
         encoding="utf-8"
     )
 
-    assert metadata["project"]["version"] == "1.0.0"
-    assert 'VERSION = "1.0.0"' in client
-    assert 'test "$TAG" = "v1.0.0"' in workflow
+    assert metadata["project"]["version"] == "2.0.0"
+    assert 'VERSION = "2.0.0"' in client
+    assert 'test "$TAG" = "v2.0.0"' in workflow
 
 
 def test_repository_verifier_accepts_public_tree():

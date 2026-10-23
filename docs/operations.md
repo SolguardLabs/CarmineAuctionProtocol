@@ -69,7 +69,7 @@ Despues:
 
 ```text
 status == Settled
-sellerDelta == winningBidAmount
+sellerDelta == winningBidAmount + totalPartialPaid
 debtSettled == true
 ```
 
@@ -151,7 +151,7 @@ python scripts/check_loc.py
 2. PR revisado y fusionado.
 3. `main` verde.
 4. `production` movida al SHA exacto y verde.
-5. Tag anotado `v1.0.0` sobre ese SHA.
+5. Tag anotado `v2.0.0` sobre ese SHA.
 6. CI e integridad del tag verdes.
-7. Release `Production 1.0.0` publicada.
+7. Release `Production 2.0.0` publicada.
 8. Integridad del evento release verde.

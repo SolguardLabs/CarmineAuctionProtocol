@@ -7,7 +7,7 @@ mercados sobrecolateralizados. Coordina custodia, pujas con garantia, extension
 anti-sniping, settlement de deuda, distribucion de lotes, limites de riesgo y
 cambios de politica con demora verificable.
 
-La version estable es **Production 1.0.0**. El nucleo se compila con Vyper
+La version estable es **Production 2.0.0**. El nucleo se compila con Vyper
 0.4.3; la integracion, simulacion y automatizacion operativa usan Python 3.12.
 
 ## Arquitectura
@@ -77,9 +77,10 @@ sequenceDiagram
     participant Ledger as SettlementLedger
     Seller->>House: deposita collateralAmount
     Bidder->>House: deposita guarantee
+    Bidder->>House: paga reserva parcial, si aplica
     Bidder->>House: completa winningBid - guarantee
-    House->>Ledger: registra settlement
-    Ledger->>Seller: transfiere winningBid
+    House->>Seller: transfiere winningBid + reservas pagadas
+    House-->>Ledger: eventos para conciliacion externa
     House->>Bidder: distribuye colateral asignado
 ```
 
@@ -95,9 +96,14 @@ Para `u` unidades parciales expresadas en bps:
 partialCollateral = floor(collateralAmount * u / 10_000)
 winnerCollateral = collateralAmount - sum(partialCollateral)
 unpaidSettlement = winningBidAmount - winningGuarantee
+sellerProceeds = winningBidAmount + totalPartialPaid
 ```
 
-El detalle de balances, redondeos e indicadores esta en
+Una reserva parcial exige transferencia previa en el token de deuda. El costo
+combina base proporcional y prima de curva, y se consulta con
+`quote_next_partial_claim`. El ganador recibe el residuo del lote despues de
+contabilizar los derechos parciales pagados. El detalle de balances, redondeos
+e indicadores esta en
 [`docs/economic-model.md`](./docs/economic-model.md).
 
 ## Stress De Cartera
@@ -217,8 +223,8 @@ siguen [`SECURITY.md`](./SECURITY.md).
 
 - `main` contiene el estado estable integrado.
 - `production` referencia exactamente el commit publicado.
-- `v1.0.0` es un tag anotado sobre ese mismo commit.
-- GitHub Release se publica como `Production 1.0.0`.
+- `v2.0.0` es un tag anotado sobre ese mismo commit.
+- GitHub Release se publica como `Production 2.0.0`.
 - CI valida Ubuntu y Windows; el workflow de integridad vuelve a ejecutar el
   gate desde el tag.
 

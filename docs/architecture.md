@@ -49,13 +49,14 @@ flowchart TB
 Mantiene una struct `Auction` por lote. Los campos se agrupan en:
 
 - identidad: seller, tokens y `lotId`;
-- economia: collateral, target, bid y guarantee;
+- economia: collateral, target, bid, guarantee y reservas pagadas;
 - tiempo: inicio, cierre, extension y ultima puja;
-- distribucion: unidades parciales y flags de claim;
+- distribucion: unidades parciales, colateral reservado y flags de claim;
 - finality: status, settlement y cancelacion.
 
 Las funciones de lectura exponen el minimo siguiente, garantia esperada,
-proximidad al cierre, cantidades de claim y deuda pendiente.
+proximidad al cierre, cotizacion incremental de reserva, cantidades de claim,
+ingreso del cedente y deuda pendiente.
 
 ## Custodia
 
@@ -66,9 +67,11 @@ explicar obligaciones, no para inventar liquidez.
 
 ## Settlement
 
-`CarmineSettlementLedger` conserva cada settlement con identificador monotono,
-importe, auction, payer, recipient y estado. Esta capa permite comparar eventos
-del AuctionHouse con flujos ERC-20 y registros de tesoreria.
+`CarmineSettlementLedger` conserva settlements independientes con identificador
+monotono, importe, auction, payer, recipient y estado. No es el ejecutor del
+pago del AuctionHouse: su integracion requiere una ruta operativa explicita.
+La transferencia al cedente ocurre dentro de `settle` y se reconcilia con el
+evento `AuctionSettled` y los movimientos ERC-20.
 
 ## Registro De Pujas
 

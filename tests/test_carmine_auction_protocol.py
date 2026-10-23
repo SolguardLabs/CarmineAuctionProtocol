@@ -202,7 +202,7 @@ def test_cancel_reverts_after_bid(w3, system):
     must_revert(w3, system["auction"].functions.cancel_auction(auction_id), system["seller"])
 
 
-def test_refund_callback_partial_claim_accounting(w3, system):
+def test_refund_callback_cannot_create_unpaid_claim(w3, system):
     admin = system["admin"]
     bob = system["bob"]
     seller = system["seller"]
@@ -227,19 +227,50 @@ def test_refund_callback_partial_claim_accounting(w3, system):
 
     tx(w3, auction.functions.bid(auction_id, 1_000 * WAD), bob)
 
-    assert callback_bidder.functions.callbacks().call() == 1
-    assert callback_bidder.functions.last_refund().call() == 180 * WAD
-    assert auction.functions.partial_claim_units(auction_id, callback_bidder.address).call() == 3000
-    assert auction.functions.preview_partial_collateral(auction_id, callback_bidder.address).call() == 300 * WAD
+    assert callback_bidder.functions.callbacks().call() == 0
+    assert auction.functions.partial_claim_units(auction_id, callback_bidder.address).call() == 0
     assert debt.functions.balanceOf(callback_bidder.address).call() == 2_000 * WAD
 
     new_end = auction.functions.auctions(auction_id).call()[7]
     time_travel_to(w3, new_end + 1)
     tx(w3, auction.functions.settle(auction_id), bob)
-    tx(w3, callback_bidder.functions.claim_partial(auction_id), admin)
+    must_revert(w3, callback_bidder.functions.claim_partial(auction_id), admin)
     tx(w3, auction.functions.claim_winner_collateral(auction_id), bob)
 
     assert debt.functions.balanceOf(seller).call() == seller_debt_start + 1_000 * WAD
-    assert collateral.functions.balanceOf(callback_bidder.address).call() == 300 * WAD
+    assert collateral.functions.balanceOf(callback_bidder.address).call() == 0
+    assert collateral.functions.balanceOf(bob).call() == 1_000 * WAD
+    assert auction.functions.preview_winner_collateral(auction_id).call() == 1_000 * WAD
+
+
+def test_paid_partial_reservation_survives_a_later_outbid(w3, system):
+    auction_id = create_default_auction(w3, system, duration=900)
+    auction = system["auction"]
+    debt = system["debt"]
+    collateral = system["collateral"]
+    alice = system["alice"]
+    bob = system["bob"]
+    seller = system["seller"]
+    seller_start = debt.functions.balanceOf(seller).call()
+    alice_start = debt.functions.balanceOf(alice).call()
+
+    tx(w3, auction.functions.bid(auction_id, 900 * WAD), alice)
+    first_end = auction.functions.auctions(auction_id).call()[7]
+    time_travel_to(w3, first_end - 20)
+    quote = auction.functions.quote_partial_claim(auction_id, 3000).call()
+    assert quote == 367_200_000_000_000_000_000
+    tx(w3, auction.functions.snapshot_leader_claim(auction_id, 3000), alice)
+    tx(w3, auction.functions.bid(auction_id, 1_000 * WAD), bob)
+    assert debt.functions.balanceOf(alice).call() == alice_start - quote
+    assert auction.functions.partial_claim_paid(auction_id, alice).call() == quote
+    assert auction.functions.seller_proceeds(auction_id).call() == 1_000 * WAD + quote
+
+    end = auction.functions.auctions(auction_id).call()[7]
+    time_travel_to(w3, end + 1)
+    tx(w3, auction.functions.settle(auction_id), bob)
+    tx(w3, auction.functions.claim_partial_collateral(auction_id), alice)
+    tx(w3, auction.functions.claim_winner_collateral(auction_id), bob)
+    assert debt.functions.balanceOf(seller).call() == seller_start + 1_000 * WAD + quote
+    assert collateral.functions.balanceOf(alice).call() == 300 * WAD
     assert collateral.functions.balanceOf(bob).call() == 700 * WAD
-    assert auction.functions.preview_winner_collateral(auction_id).call() == 700 * WAD
+    assert collateral.functions.balanceOf(auction.address).call() == 0

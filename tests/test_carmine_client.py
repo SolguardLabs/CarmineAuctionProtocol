@@ -48,14 +48,14 @@ def operation_response():
 
 def test_health_validates_response_and_authenticates_request():
     transport = FakeTransport(
-        [{"version": "1.0.0", "chainId": 1, "synchronized": True, "blockNumber": 22}]
+        [{"version": "2.0.0", "chainId": 1, "synchronized": True, "blockNumber": 22}]
     )
     client = CarmineClient("https://api.carmine.test", api_key="secret", transport=transport)
 
     health = client.health()
 
     assert asdict(health) == {
-        "version": "1.0.0",
+        "version": "2.0.0",
         "chain_id": 1,
         "synchronized": True,
         "block_number": 22,
